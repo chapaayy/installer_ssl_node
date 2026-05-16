@@ -341,11 +341,28 @@ check_remnanode_xray_errors() {
   command -v docker >/dev/null 2>&1 || return 0
   docker ps -a --format '{{.Names}}' | grep -qx remnanode || return 0
 
-  local recent
+  local recent xray_logs
   recent="$(docker logs --tail=250 remnanode 2>&1 | redact_stream || true)"
-  if printf '%s\n' "$recent" | grep -Eq 'RN-001|SPAWN_ERROR: xray|Xray core failed to start|ECONNREFUSED 127\.0\.0\.1:61000'; then
+  xray_logs="$(
+    docker exec remnanode sh -c '
+      cat /var/log/supervisor/xray.out.log /var/log/supervisor/xray.err.log 2>/dev/null | tail -n 260
+    ' 2>&1 | redact_stream || true
+  )"
+
+  if printf '%s\n%s\n' "$recent" "$xray_logs" | grep -Eq 'RN-001|SPAWN_ERROR: xray|Xray core failed to start|ECONNREFUSED 127\.0\.0\.1:61000|bind: address already in use|/opt/nginx/certs'; then
     warn "remnanode запущен, но Xray внутри контейнера падает. Нода может отображаться offline в панели."
-    printf '%s\n' "$recent" | grep -E 'RN-001|SPAWN_ERROR: xray|Xray core failed to start|ECONNREFUSED 127\.0\.0\.1:61000' | tail -n 20 >&2 || true
+    printf '%s\n%s\n' "$recent" "$xray_logs" | grep -E 'RN-001|SPAWN_ERROR: xray|Xray core failed to start|ECONNREFUSED 127\.0\.0\.1:61000|bind: address already in use|/opt/nginx/certs' | tail -n 30 >&2 || true
+
+    if printf '%s\n' "$xray_logs" | grep -q 'listen tcp 0.0.0.0:443: bind: address already in use'; then
+      warn "Xray inbound из панели пытается занять 443/tcp, но 443 уже занят Caddy. В новой архитектуре Caddy владеет 80/443."
+      warn "Исправь inbound в Config Profile панели: перенеси Xray TLS inbound с 443 на другой порт или используй профиль без прямого TLS inbound на 443."
+    fi
+
+    if printf '%s\n' "$xray_logs" | grep -q '/opt/nginx/certs'; then
+      warn "Xray config из панели всё ещё ссылается на старые nginx/acme сертификаты в /opt/nginx/certs."
+      warn "В новой Caddy-архитектуре эти пути не создаются. Убери старые certificateFile/keyFile из Xray Config или замени профиль на совместимый с Caddy."
+    fi
+
     show_remnanode_xray_logs
     return 1
   fi

@@ -335,6 +335,14 @@ Xray core failed to start
 
 то Docker/Caddy уже не главная проблема. Это означает, что Xray внутри `remnanode` не может стартовать из-за конфигурации, которую панель отправила ноде. Обычно нужно исправить Xray Config / Config Profile / inbounds в панели и сохранить профиль заново.
 
+Частые причины после перехода со старой nginx/acme-схемы:
+
+- inbound в Xray Config пытается слушать `0.0.0.0:443`, но порт `443` уже занят Caddy;
+- Xray Config ссылается на старые файлы сертификатов вроде `/opt/nginx/certs/*_fullchain.pem`;
+- в Config Profile выбран старый TLS inbound, рассчитанный на nginx/acme cert paths.
+
+В новой архитектуре Caddy владеет портами `80/443`. Для Xray нужно выбрать профиль/inbound, который не конфликтует с Caddy, или перенести Xray inbound на отдельный порт и открыть его снаружи.
+
 ## Опасная очистка Docker
 
 Обычный repair не удаляет Docker data, volumes Caddy или `/var/lib/docker`.
