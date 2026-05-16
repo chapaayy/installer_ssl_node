@@ -319,9 +319,21 @@ your-node-domain.example:2222
 ```bash
 ss -ltnp | grep ':2222'
 docker logs --tail=200 remnanode
+docker exec remnanode tail -n 120 /var/log/supervisor/xray.err.log
+docker exec remnanode tail -n 120 /var/log/supervisor/xray.out.log
 ```
 
 Порт `NODE_PORT` должен быть доступен с сервера панели. Инсталлер не открывает firewall автоматически и не меняет `DOCKER-USER`.
+
+Если в логах есть:
+
+```text
+RN-001
+SPAWN_ERROR: xray
+Xray core failed to start
+```
+
+то Docker/Caddy уже не главная проблема. Это означает, что Xray внутри `remnanode` не может стартовать из-за конфигурации, которую панель отправила ноде. Обычно нужно исправить Xray Config / Config Profile / inbounds в панели и сохранить профиль заново.
 
 ## Опасная очистка Docker
 

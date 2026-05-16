@@ -110,6 +110,18 @@ compose_status() {
 
   info "Recent Compose logs"
   docker compose --project-directory "$STACK_DIR" logs --tail=100 2>&1 | redact_stream || true
+
+  info "Recent remnanode Xray logs"
+  docker exec remnanode sh -c '
+    for file in /var/log/supervisor/xray.out.log /var/log/supervisor/xray.err.log; do
+      echo "== ${file} =="
+      if [ -f "$file" ]; then
+        tail -n 100 "$file"
+      else
+        echo "missing"
+      fi
+    done
+  ' 2>&1 | redact_stream || true
 }
 
 check_url() {

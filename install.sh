@@ -320,6 +320,39 @@ show_service_logs_tail() {
   fi
 }
 
+show_remnanode_xray_logs() {
+  command -v docker >/dev/null 2>&1 || return 0
+  docker ps -a --format '{{.Names}}' | grep -qx remnanode || return 0
+
+  warn "Внутренние логи Xray в контейнере remnanode:"
+  docker exec remnanode sh -c '
+    for file in /var/log/supervisor/xray.out.log /var/log/supervisor/xray.err.log; do
+      echo "== ${file} =="
+      if [ -f "$file" ]; then
+        tail -n 120 "$file"
+      else
+        echo "missing"
+      fi
+    done
+  ' 2>&1 | redact_stream || true
+}
+
+check_remnanode_xray_errors() {
+  command -v docker >/dev/null 2>&1 || return 0
+  docker ps -a --format '{{.Names}}' | grep -qx remnanode || return 0
+
+  local recent
+  recent="$(docker logs --tail=250 remnanode 2>&1 | redact_stream || true)"
+  if printf '%s\n' "$recent" | grep -Eq 'RN-001|SPAWN_ERROR: xray|Xray core failed to start|ECONNREFUSED 127\.0\.0\.1:61000'; then
+    warn "remnanode запущен, но Xray внутри контейнера падает. Нода может отображаться offline в панели."
+    printf '%s\n' "$recent" | grep -E 'RN-001|SPAWN_ERROR: xray|Xray core failed to start|ECONNREFUSED 127\.0\.0\.1:61000' | tail -n 20 >&2 || true
+    show_remnanode_xray_logs
+    return 1
+  fi
+
+  info "Критичных ошибок Xray в свежих логах remnanode не найдено"
+}
+
 check_url_once() {
   local url="$1"
 
@@ -373,6 +406,7 @@ check_node_port() {
   fi
 
   warn "Проверь, что панель может достучаться до ${DOMAIN:-DOMAIN}:${port}. Инсталлер не открывает firewall автоматически."
+  check_remnanode_xray_errors
 }
 
 wait_for_compose_settle() {
@@ -392,7 +426,8 @@ post_failure_hints() {
 
   if [[ "$node_failed" -eq 1 ]]; then
     warn "Нода в панели будет offline, если ${DOMAIN:-DOMAIN}:${NODE_PORT:-2222} недоступен с сервера панели."
-    warn "Минимальная проверка на VPS: ss -ltnp | grep ':${NODE_PORT:-2222}' и docker logs --tail=200 remnanode"
+    warn "Если порт слушается, но Xray падает с RN-001/SPAWN_ERROR, исправь Xray Config в панели и сохрани профиль."
+    warn "Минимальная проверка на VPS: ss -ltnp | grep ':${NODE_PORT:-2222}', docker logs --tail=200 remnanode и docker exec remnanode tail -n 120 /var/log/supervisor/xray.err.log"
   fi
 }
 

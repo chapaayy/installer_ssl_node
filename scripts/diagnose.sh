@@ -136,6 +136,8 @@ diagnose() {
   run_cmd "docker compose config" "cd /opt/remnanode-stack && docker compose config"
   run_cmd "docker compose ps" "cd /opt/remnanode-stack && docker compose ps"
   run_cmd "docker compose logs" "cd /opt/remnanode-stack && docker compose logs --tail=200"
+  run_cmd "remnanode xray.out.log" "docker exec remnanode sh -c 'tail -n 200 /var/log/supervisor/xray.out.log' || true"
+  run_cmd "remnanode xray.err.log" "docker exec remnanode sh -c 'tail -n 200 /var/log/supervisor/xray.err.log' || true"
 
   run_cmd "iptables DOCKER-USER" "iptables -S DOCKER-USER || true"
   run_cmd "nft ruleset head" "nft list ruleset | head -100 || true"
