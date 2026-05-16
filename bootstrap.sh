@@ -35,7 +35,7 @@ DOCKER_LOG_MAX_SIZE="10m"
 DOCKER_LOG_MAX_FILE="5"
 
 log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2"; }
-info() { log INFO "$*"; }
+info() { log INFO "$*" >&2; }
 warn() { log WARN "$*" >&2; }
 error() { log ERROR "$*" >&2; }
 die() { error "$*"; exit 1; }
