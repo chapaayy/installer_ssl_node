@@ -198,7 +198,7 @@ download_repo_to_tmp() {
   local repo_dir="${tmp_dir}/repo"
   local slug archive
 
-  if [[ "$REPO_URL" == "$DEFAULT_REPO_URL" ]]; then
+  if [[ "$REPO_URL" == "https://github.com/USER/REPO.git" ]]; then
     die "Set --repo-url to your GitHub repository URL or edit DEFAULT_REPO_URL in bootstrap.sh before publishing"
   fi
 
