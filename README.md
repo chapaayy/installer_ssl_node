@@ -243,7 +243,7 @@ Systemd запускает стек так:
 
 В новой версии нет:
 
-- nginx как публичного reverse proxy;
+- nginx вообще: публичный reverse proxy делает Caddy, static fallback обслуживается Caddy и внутренним `busybox`;
 - `acme.sh`;
 - `remnawave-acme-renew.service`;
 - `remnawave-acme-renew.timer`;

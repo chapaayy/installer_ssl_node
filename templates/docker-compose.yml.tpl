@@ -31,17 +31,18 @@ services:
         max-file: "__DOCKER_LOG_MAX_FILE__"
 
   fallback-app:
-    image: nginx:stable-alpine
+    image: busybox:1.36
     container_name: remnanode-fallback
+    command: ["httpd", "-f", "-p", "8080", "-h", "/srv/site"]
     restart: unless-stopped
     expose:
-      - "80"
+      - "8080"
     volumes:
-      - ./site:/usr/share/nginx/html:ro
+      - ./site:/srv/site:ro
     networks:
       - edge
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
