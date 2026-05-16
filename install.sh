@@ -23,6 +23,43 @@ warn() { log WARN "$*" >&2; }
 error() { log ERROR "$*" >&2; }
 die() { error "$*"; exit 1; }
 
+PROGRESS_TOTAL=0
+PROGRESS_CURRENT=0
+
+progress_reset() {
+  PROGRESS_TOTAL="$1"
+  PROGRESS_CURRENT=0
+}
+
+progress_bar() {
+  local pct="$1"
+  local width=24
+  local filled empty
+
+  filled=$((pct * width / 100))
+  empty=$((width - filled))
+  printf '['
+  printf '%*s' "$filled" '' | tr ' ' '#'
+  printf '%*s' "$empty" '' | tr ' ' '.'
+  printf '] %3d%%' "$pct"
+}
+
+progress_step() {
+  local message="$1"
+  local pct=100
+
+  if [[ "$PROGRESS_TOTAL" -gt 0 ]]; then
+    PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+    pct=$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))
+  fi
+
+  info "$(progress_bar "$pct") ${PROGRESS_CURRENT}/${PROGRESS_TOTAL} ${message}"
+}
+
+progress_done() {
+  info "$(progress_bar 100) Done"
+}
+
 require_root() {
   [[ "${EUID:-$(id -u)}" -eq 0 ]] || die "Нужен root: запусти sudo bash install.sh или sudo remnanode-stack"
 }
@@ -304,11 +341,14 @@ do_install() {
     return 0
   }
 
+  progress_reset 14
+
+  progress_step "Проверка root и ОС"
   require_root
   require_debian_or_ubuntu
 
   local rc=0
-  info "Подготовка окружения в ${STACK_DIR}"
+  progress_step "Подготовка окружения и .env в ${STACK_DIR}"
   set +e
   ensure_env_ready
   rc=$?
@@ -319,26 +359,43 @@ do_install() {
   fi
   [[ "$rc" -eq 0 ]] || return "$rc"
 
+  progress_step "Загрузка runtime .env"
   load_env
-  info "Установка Docker и Docker Compose V2"
+
+  progress_step "Установка Docker и Docker Compose V2"
   run_script install_docker.sh
+
+  progress_step "Проверка Docker Compose V2"
   require_docker_compose_v2
 
+  progress_step "Отключение старых конфликтующих сервисов"
   disable_old_services || return 1
 
+  progress_step "Регистрация ноды в панели"
   run_script register_panel.sh
+
+  progress_step "Проверка переменных remnanode"
   load_env
   ensure_secret_ready
 
+  progress_step "Генерация docker-compose.yml и Caddyfile"
   run_script generate_compose.sh
+
+  progress_step "Настройка logrotate"
   run_script setup_logrotate.sh
+
+  progress_step "Настройка systemd unit"
   run_script setup_systemd.sh
+
+  progress_step "Установка launcher remnanode-stack"
   install_launcher
 
-  info "Запуск remnanode stack"
+  progress_step "Запуск remnanode stack"
   docker compose --project-directory "$STACK_DIR" up -d --remove-orphans
 
+  progress_step "Финальная проверка статуса"
   final_status
+  progress_done
 }
 
 show_status() {

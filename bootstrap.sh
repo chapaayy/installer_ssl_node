@@ -40,6 +40,43 @@ warn() { log WARN "$*" >&2; }
 error() { log ERROR "$*" >&2; }
 die() { error "$*"; exit 1; }
 
+PROGRESS_TOTAL=0
+PROGRESS_CURRENT=0
+
+progress_reset() {
+  PROGRESS_TOTAL="$1"
+  PROGRESS_CURRENT=0
+}
+
+progress_bar() {
+  local pct="$1"
+  local width=24
+  local filled empty
+
+  filled=$((pct * width / 100))
+  empty=$((width - filled))
+  printf '['
+  printf '%*s' "$filled" '' | tr ' ' '#'
+  printf '%*s' "$empty" '' | tr ' ' '.'
+  printf '] %3d%%' "$pct"
+}
+
+progress_step() {
+  local message="$1"
+  local pct=100
+
+  if [[ "$PROGRESS_TOTAL" -gt 0 ]]; then
+    PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+    pct=$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))
+  fi
+
+  info "$(progress_bar "$pct") ${PROGRESS_CURRENT}/${PROGRESS_TOTAL} ${message}"
+}
+
+progress_done() {
+  info "$(progress_bar 100) Done"
+}
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -380,13 +417,33 @@ run_auto_install() {
 main() {
   require_root
   parse_args "$@"
+
+  local total=6
+  [[ "$AUTO_INSTALL" -eq 1 ]] && total=7
+  progress_reset "$total"
+
+  progress_step "Validating bootstrap arguments"
   validate_required
+
+  progress_step "Preparing defaults and generated secrets"
   apply_defaults
+
+  progress_step "Downloading and syncing installer"
   install_or_update_installer
+
+  progress_step "Installing remnanode-stack launcher"
   install_launcher
+
+  progress_step "Writing runtime .env files"
   write_envs
+
+  progress_step "Printing safe summary"
   print_summary
+
+  [[ "$AUTO_INSTALL" -eq 1 ]] && progress_step "Running auto-install"
   run_auto_install
+
+  progress_done
 }
 
 main "$@"
