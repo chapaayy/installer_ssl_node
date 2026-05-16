@@ -153,13 +153,19 @@ escape_sed_pattern() {
 }
 
 redact_stream() {
+  local sed_args=(
+    -e 's|(PANEL_API_TOKEN[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_PANEL_API_TOKEN]|g'
+    -e 's|(SECRET_KEY[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_SECRET_KEY]|g'
+  )
+
   if [[ -n "${PANEL_API_TOKEN:-}" ]]; then
-    sed -E \
-      -e "s|$(escape_sed_pattern "$PANEL_API_TOKEN")|[REDACTED_PANEL_API_TOKEN]|g" \
-      -e 's|(PANEL_API_TOKEN[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_PANEL_API_TOKEN]|g'
-  else
-    sed -E 's|(PANEL_API_TOKEN[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_PANEL_API_TOKEN]|g'
+    sed_args+=(-e "s|$(escape_sed_pattern "$PANEL_API_TOKEN")|[REDACTED_PANEL_API_TOKEN]|g")
   fi
+  if [[ -n "${SECRET_KEY:-}" ]]; then
+    sed_args+=(-e "s|$(escape_sed_pattern "$SECRET_KEY")|[REDACTED_SECRET_KEY]|g")
+  fi
+
+  sed -E "${sed_args[@]}"
 }
 
 require_docker_compose_v2() {
@@ -304,7 +310,17 @@ disable_old_services() {
   info "Backup старых unit сохранён: ${backup_dir}"
 }
 
-check_url() {
+show_service_logs_tail() {
+  local service="$1"
+  local lines="${2:-80}"
+
+  if [[ -f "$COMPOSE_FILE" ]] && command -v docker >/dev/null 2>&1; then
+    warn "Последние логи ${service}:"
+    docker compose --project-directory "$STACK_DIR" logs --tail="$lines" "$service" 2>&1 | redact_stream || true
+  fi
+}
+
+check_url_once() {
   local url="$1"
 
   if ! command -v curl >/dev/null 2>&1; then
@@ -312,15 +328,80 @@ check_url() {
     return 0
   fi
 
+  curl -kI --max-time 20 "$url"
+}
+
+check_url() {
+  local url="$1"
+  local attempts="${2:-1}"
+  local delay="${3:-10}"
+  local i
+
   info "Проверяю ${url}"
-  if ! curl -kI --max-time 20 --retry 2 "$url"; then
-    warn "HTTP-проверка не прошла: ${url}"
+  for ((i = 1; i <= attempts; i++)); do
+    if check_url_once "$url"; then
+      return 0
+    fi
+    if ((i < attempts)); then
+      warn "Проверка не прошла: ${url}; повтор через ${delay}s (${i}/${attempts})"
+      sleep "$delay"
+    fi
+  done
+
+  warn "HTTP-проверка не прошла: ${url}"
+  return 1
+}
+
+check_node_port() {
+  load_env_if_exists
+
+  local port="${NODE_PORT:-2222}"
+
+  info "Проверяю локальный порт remnanode: 127.0.0.1:${port}"
+  if command -v ss >/dev/null 2>&1; then
+    if ss -ltn "( sport = :${port} )" | grep -q ":${port}"; then
+      info "remnanode слушает порт ${port}"
+    else
+      warn "remnanode не слушает порт ${port}; панель не сможет увидеть ноду"
+      show_service_logs_tail remnanode 120
+      return 1
+    fi
+  elif ! timeout 5 bash -c "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1; then
+    warn "Не удалось подключиться к 127.0.0.1:${port}; панель не сможет увидеть ноду"
+    show_service_logs_tail remnanode 120
+    return 1
+  fi
+
+  warn "Проверь, что панель может достучаться до ${DOMAIN:-DOMAIN}:${port}. Инсталлер не открывает firewall автоматически."
+}
+
+wait_for_compose_settle() {
+  local seconds="${1:-20}"
+  info "Жду ${seconds}s, чтобы контейнеры успели пройти healthcheck и Caddy начал выпуск сертификата"
+  sleep "$seconds"
+}
+
+post_failure_hints() {
+  local https_failed="$1"
+  local node_failed="$2"
+
+  if [[ "$https_failed" -eq 1 ]]; then
+    warn "HTTPS ещё не поднялся. Чаще всего это DNS, закрытые 80/443 снаружи или задержка выпуска сертификата Caddy."
+    show_service_logs_tail caddy 120
+  fi
+
+  if [[ "$node_failed" -eq 1 ]]; then
+    warn "Нода в панели будет offline, если ${DOMAIN:-DOMAIN}:${NODE_PORT:-2222} недоступен с сервера панели."
+    warn "Минимальная проверка на VPS: ss -ltnp | grep ':${NODE_PORT:-2222}' и docker logs --tail=200 remnanode"
   fi
 }
 
 final_status() {
   load_env_if_exists
+  local https_failed=0
+  local node_failed=0
 
+  wait_for_compose_settle 20
   info "Compose status"
   compose ps || true
 
@@ -328,11 +409,14 @@ final_status() {
   docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true
 
   if [[ -n "${DOMAIN:-}" ]]; then
-    check_url "http://${DOMAIN}"
-    check_url "https://${DOMAIN}"
+    check_url "http://${DOMAIN}" 2 5 || true
+    check_url "https://${DOMAIN}" 6 10 || https_failed=1
   else
     warn "DOMAIN пустой; HTTP/HTTPS-проверки пропущены"
   fi
+
+  check_node_port || node_failed=1
+  post_failure_hints "$https_failed" "$node_failed"
 }
 
 do_install() {

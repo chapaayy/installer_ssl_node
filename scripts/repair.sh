@@ -6,6 +6,7 @@ STACK_DIR="/opt/remnanode-stack"
 ENV_FILE="${STACK_DIR}/.env"
 DOMAIN_VALUE=""
 PANEL_API_TOKEN_VALUE=""
+SECRET_KEY_VALUE=""
 
 log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2"; }
 info() { log INFO "$*"; }
@@ -44,6 +45,7 @@ load_runtime_env_for_checks() {
     case "$key" in
       DOMAIN) DOMAIN_VALUE="$value" ;;
       PANEL_API_TOKEN) PANEL_API_TOKEN_VALUE="$value" ;;
+      SECRET_KEY) SECRET_KEY_VALUE="$value" ;;
     esac
   done < "$ENV_FILE"
 }
@@ -53,13 +55,19 @@ escape_sed_pattern() {
 }
 
 redact_stream() {
+  local sed_args=(
+    -e 's|(PANEL_API_TOKEN[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_PANEL_API_TOKEN]|g'
+    -e 's|(SECRET_KEY[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_SECRET_KEY]|g'
+  )
+
   if [[ -n "$PANEL_API_TOKEN_VALUE" ]]; then
-    sed -E \
-      -e "s|$(escape_sed_pattern "$PANEL_API_TOKEN_VALUE")|[REDACTED_PANEL_API_TOKEN]|g" \
-      -e 's|(PANEL_API_TOKEN[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_PANEL_API_TOKEN]|g'
-  else
-    sed -E 's|(PANEL_API_TOKEN[=:][[:space:]]*)[^[:space:]]+|\1[REDACTED_PANEL_API_TOKEN]|g'
+    sed_args+=(-e "s|$(escape_sed_pattern "$PANEL_API_TOKEN_VALUE")|[REDACTED_PANEL_API_TOKEN]|g")
   fi
+  if [[ -n "$SECRET_KEY_VALUE" ]]; then
+    sed_args+=(-e "s|$(escape_sed_pattern "$SECRET_KEY_VALUE")|[REDACTED_SECRET_KEY]|g")
+  fi
+
+  sed -E "${sed_args[@]}"
 }
 
 require_stack_dir() {

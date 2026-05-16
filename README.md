@@ -300,6 +300,29 @@ Repair включает Docker/containerd, делает Compose pull/up, пок�
 
 Не запускайте nginx или другой публичный reverse proxy на 80/443 рядом с Caddy.
 
+## Если нода offline в панели
+
+Контейнер `remnanode` может быть запущен, но панель будет показывать ноду offline, если панель не может подключиться к адресу ноды:
+
+```text
+DOMAIN:NODE_PORT
+```
+
+По умолчанию это:
+
+```text
+your-node-domain.example:2222
+```
+
+Проверьте на VPS:
+
+```bash
+ss -ltnp | grep ':2222'
+docker logs --tail=200 remnanode
+```
+
+Порт `NODE_PORT` должен быть доступен с сервера панели. Инсталлер не открывает firewall автоматически и не меняет `DOCKER-USER`.
+
 ## Опасная очистка Docker
 
 Обычный repair не удаляет Docker data, volumes Caddy или `/var/lib/docker`.
