@@ -77,7 +77,7 @@ download_or_update_repo() {
   local repo_url="$1" branch="$2" repo_path tar_url tmp_dir archive extracted
 
   mkdir -p "$INSTALLER_DIR"
-  if [[ -n "$repo_url" && "$repo_url" != "$DEFAULT_REPO_URL" ]] && command -v git >/dev/null 2>&1; then
+  if [[ -n "$repo_url" ]] && command -v git >/dev/null 2>&1; then
     if [[ -d "$INSTALLER_DIR/.git" ]]; then
       log "Updating installer repository in $INSTALLER_DIR"
       git -C "$INSTALLER_DIR" fetch --depth=1 origin "$branch"
@@ -86,18 +86,6 @@ download_or_update_repo() {
       log "Cloning installer repository to $INSTALLER_DIR"
       rm -rf "$INSTALLER_DIR"
       git clone --depth=1 --branch "$branch" "$repo_url" "$INSTALLER_DIR"
-    fi
-    return 0
-  fi
-
-  if [[ "$repo_url" == "$DEFAULT_REPO_URL" ]]; then
-    warn "Using placeholder repo URL. Set --repo-url after publishing the repository."
-    if [[ -f "$INSTALLER_DIR/install.sh" ]]; then
-      warn "Using existing installer files from $INSTALLER_DIR"
-      return 0
-    fi
-    if (( AUTO_INSTALL == 1 )); then
-      die "install.sh is not present in $INSTALLER_DIR. Check --repo-url or repository availability."
     fi
     return 0
   fi
