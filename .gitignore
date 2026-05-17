@@ -1,4 +1,6 @@
 .env
-backups/
-diagnostics/
+installer.env
+*.backup.*
 *.log
+node_modules/
+.DS_Store

@@ -1,6 +1,0 @@
-*.sh text eol=lf
-*.tpl text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.md text eol=lf
-*.example text eol=lf
