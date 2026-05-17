@@ -4175,7 +4175,7 @@ Commands:
   sudo remnanode-stack install
 
 First install:
-  curl -fsSL https://raw.githubusercontent.com/chapaayy/remnanode-stack-installer/main/bootstrap.sh | sudo bash -s -- --help
+  curl -fsSL https://raw.githubusercontent.com/chapaayy/installer_ssl_node/main/bootstrap.sh | sudo bash -s -- --help
 EOT
 }
 

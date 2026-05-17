@@ -3,7 +3,7 @@
 Named mode:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/chapaayy/remnanode-stack-installer/main/bootstrap.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/chapaayy/installer_ssl_node/main/bootstrap.sh | sudo bash -s -- \
   --panel-api-token "TOKEN" \
   --acme-email "admin@example.com" \
   --panel-domain "panel.example.com" \
@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/chapaayy/remnanode-stack-installer/
 Positional mode:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/chapaayy/remnanode-stack-installer/main/bootstrap.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/chapaayy/installer_ssl_node/main/bootstrap.sh | sudo bash -s -- \
   "TOKEN" \
   "admin@example.com" \
   "panel.example.com" \
@@ -39,7 +39,7 @@ For the next node you usually change only the last argument: `DOMAIN`.
 
 Warning: command-line tokens can be saved in shell history, terminal logs, process lists, or automation logs. Use a short-lived token where possible.
 
-The bootstrap script downloads this repository by default: `https://github.com/chapaayy/remnanode-stack-installer.git`.
+The bootstrap script downloads this repository by default: `https://github.com/chapaayy/installer_ssl_node.git`.
 
 Install order follows the GitHub installer flow, adapted for nginx:
 

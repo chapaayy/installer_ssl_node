@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 INSTALLER_DIR="/opt/remnanode-stack-installer"
 STACK_DIR="/opt/remnanode-stack"
-DEFAULT_REPO_URL="https://github.com/chapaayy/remnanode-stack-installer.git"
+DEFAULT_REPO_URL="https://github.com/chapaayy/installer_ssl_node.git"
 
 log() { printf '%s [INFO] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 ok() { printf '%s [OK] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
