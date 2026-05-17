@@ -36,6 +36,9 @@ Optional flags:
   --country-code
   --provider-uuid
   --node-address
+  --log-retention-days
+  --docker-log-max-size
+  --docker-log-max-file
   --repo-url
   --branch
   --auto-install
@@ -122,6 +125,7 @@ PANEL_NODE_ADDRESS=""
 PANEL_NODE_COUNTRY_CODE="XX"
 PANEL_PROVIDER_UUID=""
 REMNANODE_IMAGE="remnawave/node:latest"
+LOG_RETENTION_DAYS="31"
 DOCKER_LOG_MAX_SIZE="10m"
 DOCKER_LOG_MAX_FILE="5"
 REPO_URL="${REPO_URL:-$DEFAULT_REPO_URL}"
@@ -144,6 +148,9 @@ while (($# > 0)); do
     --country-code) PANEL_NODE_COUNTRY_CODE="${2:-}"; shift 2 ;;
     --provider-uuid) PANEL_PROVIDER_UUID="${2:-}"; shift 2 ;;
     --node-address) PANEL_NODE_ADDRESS="${2:-}"; shift 2 ;;
+    --log-retention-days) LOG_RETENTION_DAYS="${2:-}"; shift 2 ;;
+    --docker-log-max-size) DOCKER_LOG_MAX_SIZE="${2:-}"; shift 2 ;;
+    --docker-log-max-file) DOCKER_LOG_MAX_FILE="${2:-}"; shift 2 ;;
     --repo-url) REPO_URL="${2:-}"; shift 2 ;;
     --branch) BRANCH="${2:-}"; shift 2 ;;
     --auto-install) AUTO_INSTALL=1; shift ;;
@@ -171,6 +178,8 @@ fi
 [[ -n "$PANEL_ACTIVE_INBOUND_UUIDS" ]] || die "PANEL_ACTIVE_INBOUND_UUIDS is required"
 [[ -n "$DOMAIN" ]] || die "DOMAIN is required"
 [[ "$NODE_PORT" =~ ^[0-9]+$ ]] || die "NODE_PORT must be numeric"
+[[ "$LOG_RETENTION_DAYS" =~ ^[0-9]+$ ]] || die "LOG_RETENTION_DAYS must be numeric"
+(( LOG_RETENTION_DAYS >= 1 && LOG_RETENTION_DAYS <= 366 )) || die "LOG_RETENTION_DAYS must be in range 1..366"
 
 NODE_NAME="${NODE_NAME:-$DOMAIN}"
 PANEL_NODE_ADDRESS="${PANEL_NODE_ADDRESS:-$DOMAIN}"
@@ -202,6 +211,7 @@ PANEL_NODE_ADDRESS=$(quote_env_value "$PANEL_NODE_ADDRESS")
 PANEL_NODE_COUNTRY_CODE=$(quote_env_value "$PANEL_NODE_COUNTRY_CODE")
 PANEL_PROVIDER_UUID=$(quote_env_value "$PANEL_PROVIDER_UUID")
 REMNANODE_IMAGE=$(quote_env_value "$REMNANODE_IMAGE")
+LOG_RETENTION_DAYS=$(quote_env_value "$LOG_RETENTION_DAYS")
 DOCKER_LOG_MAX_SIZE=$(quote_env_value "$DOCKER_LOG_MAX_SIZE")
 DOCKER_LOG_MAX_FILE=$(quote_env_value "$DOCKER_LOG_MAX_FILE")
 ENV
@@ -225,6 +235,9 @@ Summary:
   PANEL_ACTIVE_INBOUND_UUIDS=$PANEL_ACTIVE_INBOUND_UUIDS
   SECRET_KEY=***generated/hidden***
   REMNANODE_IMAGE=$REMNANODE_IMAGE
+  LOG_RETENTION_DAYS=$LOG_RETENTION_DAYS
+  DOCKER_LOG_MAX_SIZE=$DOCKER_LOG_MAX_SIZE
+  DOCKER_LOG_MAX_FILE=$DOCKER_LOG_MAX_FILE
 
 Management command after install:
   sudo remnanode-stack

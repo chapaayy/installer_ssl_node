@@ -58,3 +58,5 @@ sudo remnanode-stack help
 ```
 
 Firewall opens SSH, 80/tcp for ACME, public TLS/inbound ports `443/tcp`, `4443/tcp`, `8443/tcp`, `9443/tcp`, and `NODE_PORT` for the panel connection.
+
+Log retention defaults are conservative: nginx/install logs and remnanode file logs rotate daily, compressed archives older than `31` days are removed, Docker json logs are capped by `DOCKER_LOG_MAX_SIZE` x `DOCKER_LOG_MAX_FILE`, and journald gets a 31-day retention drop-in.

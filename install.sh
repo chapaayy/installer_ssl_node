@@ -87,13 +87,14 @@ remember_explicit_vars \
   PANEL_NODE_UUID PANEL_NODE_NAME PANEL_NODE_ADDRESS PANEL_NODE_COUNTRY_CODE PANEL_CONFIG_PROFILE_UUID \
   PANEL_CONFIG_PROFILE_NAME PANEL_ACTIVE_INBOUND_UUIDS PANEL_PROVIDER_UUID PANEL_IP AUTO_INSTALL_NODE \
   REMNANODE_LOG_DIR REMNANODE_LOGROTATE_FILE REMNANODE_LOGROTATE_SIZE REMNANODE_LOGROTATE_ROTATE \
-  DOCKER_LOG_MAX_SIZE DOCKER_LOG_MAX_FILE APT_LOCK_TIMEOUT APT_LOCK_RETRY_INTERVAL NGINX_LOG_DIR \
+  LOG_RETENTION_DAYS DOCKER_LOG_MAX_SIZE DOCKER_LOG_MAX_FILE APT_LOCK_TIMEOUT APT_LOCK_RETRY_INTERVAL NGINX_LOG_DIR \
   INSTALL_LOG_FILE \
   FAIL2BAN_JAIL_FILE FAIL2BAN_FILTER_FILE FAIL2BAN_LOCAL_FILE FAIL2BAN_IGNORE_IPS FAIL2BAN_SSH_BANTIME \
   FAIL2BAN_SSH_FINDTIME FAIL2BAN_SSH_MAXRETRY FAIL2BAN_NGINX_BANTIME FAIL2BAN_NGINX_FINDTIME \
   FAIL2BAN_NGINX_MAXRETRY FAIL2BAN_RECIDIVE_BANTIME FAIL2BAN_RECIDIVE_FINDTIME FAIL2BAN_RECIDIVE_MAXRETRY \
   SITE_SOURCE_DIR EXTRA_INSTALL_DOMAINS APPLY_NETWORK_TUNING SETUP_FIREWALL SETUP_LIMITS \
-  CONFIGURE_DOCKER_DAEMON NETWORK_SYSCTL_FILE LIMITS_FILE DOCKER_SYSTEMD_OVERRIDE_FILE
+  CONFIGURE_DOCKER_DAEMON CONFIGURE_JOURNALD_RETENTION JOURNALD_MAX_RETENTION_SEC JOURNALD_SYSTEM_MAX_USE \
+  JOURNALD_RUNTIME_MAX_USE NETWORK_SYSCTL_FILE LIMITS_FILE DOCKER_SYSTEMD_OVERRIDE_FILE
 
 load_installer_env_file "$SCRIPT_ENV_FILE"
 
@@ -137,8 +138,9 @@ PANEL_IP="${PANEL_IP:-}"
 AUTO_INSTALL_NODE="${AUTO_INSTALL_NODE:-1}"
 REMNANODE_LOG_DIR="${REMNANODE_LOG_DIR:-/var/log/remnanode}"
 REMNANODE_LOGROTATE_FILE="${REMNANODE_LOGROTATE_FILE:-/etc/logrotate.d/remnanode}"
+LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-31}"
 REMNANODE_LOGROTATE_SIZE="${REMNANODE_LOGROTATE_SIZE:-50M}"
-REMNANODE_LOGROTATE_ROTATE="${REMNANODE_LOGROTATE_ROTATE:-5}"
+REMNANODE_LOGROTATE_ROTATE="${REMNANODE_LOGROTATE_ROTATE:-$LOG_RETENTION_DAYS}"
 DOCKER_LOG_MAX_SIZE="${DOCKER_LOG_MAX_SIZE:-10m}"
 DOCKER_LOG_MAX_FILE="${DOCKER_LOG_MAX_FILE:-5}"
 APT_LOCK_TIMEOUT="${APT_LOCK_TIMEOUT:-600}"
@@ -165,6 +167,10 @@ APPLY_NETWORK_TUNING="${APPLY_NETWORK_TUNING:-1}"
 SETUP_FIREWALL="${SETUP_FIREWALL:-1}"
 SETUP_LIMITS="${SETUP_LIMITS:-1}"
 CONFIGURE_DOCKER_DAEMON="${CONFIGURE_DOCKER_DAEMON:-1}"
+CONFIGURE_JOURNALD_RETENTION="${CONFIGURE_JOURNALD_RETENTION:-1}"
+JOURNALD_MAX_RETENTION_SEC="${JOURNALD_MAX_RETENTION_SEC:-31d}"
+JOURNALD_SYSTEM_MAX_USE="${JOURNALD_SYSTEM_MAX_USE:-512M}"
+JOURNALD_RUNTIME_MAX_USE="${JOURNALD_RUNTIME_MAX_USE:-256M}"
 NETWORK_SYSCTL_FILE="${NETWORK_SYSCTL_FILE:-/etc/sysctl.d/99-remnanode-network.conf}"
 LIMITS_FILE="${LIMITS_FILE:-/etc/security/limits.d/99-remnanode.conf}"
 DOCKER_SYSTEMD_OVERRIDE_FILE="${DOCKER_SYSTEMD_OVERRIDE_FILE:-/etc/systemd/system/docker.service.d/override.conf}"
@@ -979,6 +985,8 @@ rebuild_runtime_paths() {
   validate_path_value "NETWORK_SYSCTL_FILE" "$NETWORK_SYSCTL_FILE"
   validate_path_value "LIMITS_FILE" "$LIMITS_FILE"
   validate_path_value "DOCKER_SYSTEMD_OVERRIDE_FILE" "$DOCKER_SYSTEMD_OVERRIDE_FILE"
+  [[ "$LOG_RETENTION_DAYS" =~ ^[0-9]+$ ]] || die "LOG_RETENTION_DAYS must be numeric"
+  (( LOG_RETENTION_DAYS >= 1 && LOG_RETENTION_DAYS <= 366 )) || die "LOG_RETENTION_DAYS must be in range 1..366"
 }
 
 prepare_domains_from_runtime() {
@@ -1080,6 +1088,7 @@ SSL_CERT=$(quote_config_value "$SSL_CERT")
 AUTO_INSTALL_NODE=$(quote_config_value "$AUTO_INSTALL_NODE")
 REMNANODE_LOG_DIR=$(quote_config_value "$REMNANODE_LOG_DIR")
 REMNANODE_LOGROTATE_FILE=$(quote_config_value "$REMNANODE_LOGROTATE_FILE")
+LOG_RETENTION_DAYS=$(quote_config_value "$LOG_RETENTION_DAYS")
 REMNANODE_LOGROTATE_SIZE=$(quote_config_value "$REMNANODE_LOGROTATE_SIZE")
 REMNANODE_LOGROTATE_ROTATE=$(quote_config_value "$REMNANODE_LOGROTATE_ROTATE")
 DOCKER_LOG_MAX_SIZE=$(quote_config_value "$DOCKER_LOG_MAX_SIZE")
@@ -1103,6 +1112,10 @@ APPLY_NETWORK_TUNING=$(quote_config_value "$APPLY_NETWORK_TUNING")
 SETUP_FIREWALL=$(quote_config_value "$SETUP_FIREWALL")
 SETUP_LIMITS=$(quote_config_value "$SETUP_LIMITS")
 CONFIGURE_DOCKER_DAEMON=$(quote_config_value "$CONFIGURE_DOCKER_DAEMON")
+CONFIGURE_JOURNALD_RETENTION=$(quote_config_value "$CONFIGURE_JOURNALD_RETENTION")
+JOURNALD_MAX_RETENTION_SEC=$(quote_config_value "$JOURNALD_MAX_RETENTION_SEC")
+JOURNALD_SYSTEM_MAX_USE=$(quote_config_value "$JOURNALD_SYSTEM_MAX_USE")
+JOURNALD_RUNTIME_MAX_USE=$(quote_config_value "$JOURNALD_RUNTIME_MAX_USE")
 NETWORK_SYSCTL_FILE=$(quote_config_value "$NETWORK_SYSCTL_FILE")
 LIMITS_FILE=$(quote_config_value "$LIMITS_FILE")
 DOCKER_SYSTEMD_OVERRIDE_FILE=$(quote_config_value "$DOCKER_SYSTEMD_OVERRIDE_FILE")
@@ -2346,9 +2359,12 @@ write_remnanode_logrotate() {
   mkdir -p "$(dirname "$REMNANODE_LOGROTATE_FILE")"
   cat > "$REMNANODE_LOGROTATE_FILE" <<ROTATE
 ${REMNANODE_LOG_DIR}/*.log {
-    size ${REMNANODE_LOGROTATE_SIZE}
+    daily
     rotate ${REMNANODE_LOGROTATE_ROTATE}
+    maxage ${LOG_RETENTION_DAYS}
+    maxsize ${REMNANODE_LOGROTATE_SIZE}
     compress
+    delaycompress
     missingok
     notifempty
     copytruncate
@@ -3613,9 +3629,12 @@ write_nginx_logrotate() {
   mkdir -p "$(dirname "$nginx_rotate_file")"
   cat > "$nginx_rotate_file" <<ROTATE
 ${NGINX_LOG_DIR}/*.log {
-    size ${REMNANODE_LOGROTATE_SIZE}
+    daily
     rotate ${REMNANODE_LOGROTATE_ROTATE}
+    maxage ${LOG_RETENTION_DAYS}
+    maxsize ${REMNANODE_LOGROTATE_SIZE}
     compress
+    delaycompress
     missingok
     notifempty
     copytruncate
@@ -3625,12 +3644,85 @@ ROTATE
   ok "Created nginx logrotate config: $nginx_rotate_file"
 }
 
+write_fail2ban_logrotate_if_needed() {
+  local fail2ban_rotate_file="/etc/logrotate.d/remnanode-fail2ban"
+  local existing_file=""
+
+  existing_file="$(grep -Rsl '^[[:space:]]*/var/log/fail2ban\.log[[:space:]]*{' /etc/logrotate.d 2>/dev/null | grep -v -Fx "$fail2ban_rotate_file" | head -n1 || true)"
+  if [[ -n "$existing_file" ]]; then
+    rm -f "$fail2ban_rotate_file" 2>/dev/null || true
+    log "Existing fail2ban logrotate config found: $existing_file"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$fail2ban_rotate_file")"
+  cat > "$fail2ban_rotate_file" <<ROTATE
+/var/log/fail2ban.log {
+    daily
+    rotate ${LOG_RETENTION_DAYS}
+    maxage ${LOG_RETENTION_DAYS}
+    maxsize ${REMNANODE_LOGROTATE_SIZE}
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+ROTATE
+  chmod 644 "$fail2ban_rotate_file"
+  ok "Created fail2ban logrotate config: $fail2ban_rotate_file"
+}
+
+configure_journald_retention() {
+  local journal_dir="/etc/systemd/journald.conf.d"
+  local journal_file="$journal_dir/99-remnanode-retention.conf"
+
+  bool_enabled "$CONFIGURE_JOURNALD_RETENTION" || {
+    log "journald retention skipped by CONFIGURE_JOURNALD_RETENTION=${CONFIGURE_JOURNALD_RETENTION}"
+    return 0
+  }
+
+  have_cmd systemctl || {
+    warn "systemctl is not available; journald retention skipped"
+    return 0
+  }
+
+  mkdir -p "$journal_dir"
+  cat > "$journal_file" <<JOURNALD
+[Journal]
+MaxRetentionSec=${JOURNALD_MAX_RETENTION_SEC}
+SystemMaxUse=${JOURNALD_SYSTEM_MAX_USE}
+RuntimeMaxUse=${JOURNALD_RUNTIME_MAX_USE}
+JOURNALD
+  chmod 644 "$journal_file"
+  ok "journald retention configured: $journal_file"
+
+  systemctl try-restart systemd-journald >/dev/null 2>&1 || warn "Unable to restart systemd-journald; retention applies after service restart"
+  if have_cmd journalctl; then
+    journalctl --vacuum-time="$JOURNALD_MAX_RETENTION_SEC" >/dev/null 2>&1 || true
+  fi
+}
+
+cleanup_old_rotated_logs() {
+  local dir
+
+  for dir in "$NGINX_LOG_DIR" "$REMNANODE_LOG_DIR"; do
+    [[ -d "$dir" ]] || continue
+    find "$dir" -maxdepth 1 -type f \
+      \( -name '*.log-*' -o -name '*.log.*' -o -name '*.gz' \) \
+      -mtime +"$LOG_RETENTION_DAYS" -delete 2>/dev/null || true
+  done
+}
+
 write_logrotate_configs() {
   if ! have_cmd logrotate; then
     warn "logrotate is not installed; logrotate configs will still be written"
   fi
   write_remnanode_logrotate
   write_nginx_logrotate
+  write_fail2ban_logrotate_if_needed
+  configure_journald_retention
+  cleanup_old_rotated_logs
 }
 
 write_compose() {
