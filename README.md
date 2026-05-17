@@ -56,3 +56,5 @@ After install, manage the node with:
 ```bash
 sudo remnanode-stack help
 ```
+
+Firewall opens SSH, 80/tcp for ACME, public TLS/inbound ports `443/tcp`, `4443/tcp`, `8443/tcp`, `9443/tcp`, and `NODE_PORT` for the panel connection.

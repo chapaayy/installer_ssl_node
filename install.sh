@@ -173,7 +173,6 @@ ACME=""
 SERVICE_RENEW="/etc/systemd/system/remnawave-acme-renew.service"
 TIMER_RENEW="/etc/systemd/system/remnawave-acme-renew.timer"
 SERVICE_LOCKDOWN="/etc/systemd/system/remnawave-port80-lockdown.service"
-GLOBAL_NODE_HELP_BIN="/usr/local/bin/node-help"
 GLOBAL_COMMANDS_DIR="/usr/local/bin"
 PORT80_RULE_COMMENT="remnawave-port80"
 
@@ -2291,13 +2290,35 @@ install_self_copy() {
 }
 
 install_global_node_help() {
+  local wrapper_path="$GLOBAL_COMMANDS_DIR/remnanode-stack"
   local installed_script="$BASE_DIR/install.sh"
-  cat > "$GLOBAL_NODE_HELP_BIN" <<EOF
+
+  mkdir -p "$GLOBAL_COMMANDS_DIR"
+  cat > "$wrapper_path" <<EOF
 #!/usr/bin/env bash
-exec $(quote_sh "$installed_script") node-help
+set -Eeuo pipefail
+cmd="\${1:-help}"
+shift || true
+case "\$cmd" in
+  install|upgrade)
+    exec sudo bash $(quote_sh "$installed_script") --internal-auto-install "\$@"
+    ;;
+  help|-h|--help)
+    cat <<'HELP'
+Usage:
+  sudo remnanode-stack install
+  sudo remnanode-stack help
+HELP
+    ;;
+  *)
+    echo "Unknown command: \$cmd" >&2
+    echo "Run: sudo remnanode-stack help" >&2
+    exit 2
+    ;;
+esac
 EOF
-  chmod +x "$GLOBAL_NODE_HELP_BIN"
-  ok "Глобальная команда node-help установлена: $GLOBAL_NODE_HELP_BIN"
+  chmod +x "$wrapper_path"
+  ok "Global management command installed: $wrapper_path"
 }
 
 write_remnanode_env() {
@@ -2610,19 +2631,9 @@ $([[ -n "${PANEL_NODE_UUID:-}" ]] && echo "UUID ноды в панели:    ${P
 $([[ -n "${PANEL_NODE_COUNTRY_CODE:-}" ]] && echo "Код страны ноды:       ${PANEL_NODE_COUNTRY_CODE}")
 $([[ -n "${panel_profile:-}" ]] && echo "Config profile:        ${panel_profile}")
 
-Полезные команды:
-  sudo bash ${installed_script} status
-  sudo bash ${installed_script} start-node
-  sudo bash ${installed_script} stop-node
-  sudo bash ${installed_script} restart-node
-  sudo bash ${installed_script} logs-node
-  sudo bash ${installed_script} logs-node-live
-  sudo bash ${installed_script} logs-node-error
-  sudo bash ${installed_script} logs-node-access
-  sudo bash ${installed_script} logs-node-xray-out
-  sudo bash ${installed_script} logs-node-xray-err
-  ${cb} -f ${REMNANODE_COMPOSE_FILE} up -d --force-recreate
-  ${cb} -f ${REMNANODE_COMPOSE_FILE} down --remove-orphans
+Управление:
+  sudo remnanode-stack install
+  sudo remnanode-stack help
 
 Чтобы включить файловые access/error логи, добавь этот блок в Xray Config:
   "log": {
@@ -2815,238 +2826,28 @@ load_runtime_or_die() {
 }
 
 print_node_help() {
-  local installed_script
-  installed_script="$BASE_DIR/install.sh"
   cat <<EOT
-${COLOR_INFO}Команды управления Remnawave / remnanode${COLOR_RESET}
-----------------------------------------
+Commands:
+  sudo remnanode-stack install
+  sudo remnanode-stack help
 
-  - Показать эту справку из любой папки
-  ${COLOR_OK}node-help${COLOR_RESET}
-
-  - Показать текущую конфигурацию, сертификаты и состояние сервисов
-  ${COLOR_OK}sudo bash ${installed_script} status${COLOR_RESET}
-
-  - Запустить remnanode
-  ${COLOR_OK}sudo bash ${installed_script} start-node${COLOR_RESET}
-
-  - Остановить remnanode
-  ${COLOR_OK}sudo bash ${installed_script} stop-node${COLOR_RESET}
-
-  - Перезапустить remnanode
-  ${COLOR_OK}sudo bash ${installed_script} restart-node${COLOR_RESET}
-
-  - Показать последние Docker-логи remnanode
-  ${COLOR_OK}sudo bash ${installed_script} logs-node${COLOR_RESET}
-
-  - Смотреть live Docker-логи remnanode
-  ${COLOR_OK}sudo bash ${installed_script} logs-node-live${COLOR_RESET}
-
-  - Смотреть файловый error.log Xray на хосте
-  ${COLOR_OK}sudo bash ${installed_script} logs-node-error${COLOR_RESET}
-
-  - Смотреть файловый access.log Xray на хосте
-  ${COLOR_OK}sudo bash ${installed_script} logs-node-access${COLOR_RESET}
-
-  - Смотреть stdout-лог Xray внутри контейнера
-  ${COLOR_OK}sudo bash ${installed_script} logs-node-xray-out${COLOR_RESET}
-
-  - Смотреть stderr-лог Xray внутри контейнера
-  ${COLOR_OK}sudo bash ${installed_script} logs-node-xray-err${COLOR_RESET}
-
-  - Перевыпустить сертификаты по сохранённой конфигурации
-  ${COLOR_OK}sudo bash ${installed_script} issue${COLOR_RESET}
-
-  - Запустить один цикл продления сертификатов вручную
-  ${COLOR_OK}sudo bash ${installed_script} renew${COLOR_RESET}
-
-  - Временно открыть 80/tcp для ACME
-  ${COLOR_OK}sudo bash ${installed_script} open80${COLOR_RESET}
-
-  - Снова закрыть 80/tcp
-  ${COLOR_OK}sudo bash ${installed_script} close80${COLOR_RESET}
-
-  - Показать список активных jail fail2ban
-  ${COLOR_OK}sudo fail2ban-client status${COLOR_RESET}
-
-  - Показать состояние fail2ban для SSH
-  ${COLOR_OK}sudo fail2ban-client status sshd${COLOR_RESET}
-
-  - Показать состояние fail2ban для nginx-сканеров
-  ${COLOR_OK}sudo fail2ban-client status remnanode-nginx-botsearch${COLOR_RESET}
-
-Первая установка:
-  ${COLOR_OK}cd ~/installer_ssl_node${COLOR_RESET}
-  ${COLOR_OK}sudo bash ./install.sh de1.example.site${COLOR_RESET}
+First install:
+  curl -fsSL https://raw.githubusercontent.com/chapaayy/installer_ssl_node/main/bootstrap.sh | sudo bash -s -- --help
 EOT
 }
 
 usage() {
   cat <<EOT
-Использование:
-  $SCRIPT_NAME install [domains...]            полная установка nginx, сертификатов и remnanode
-  $SCRIPT_NAME [domains...]                    то же самое, что install [domains...]
-  $SCRIPT_NAME install-node                    установить или обновить только remnanode
-  $SCRIPT_NAME start-node                      запустить remnanode по сохранённому compose
-  $SCRIPT_NAME stop-node                       остановить remnanode
-  $SCRIPT_NAME restart-node                    перезапустить remnanode
-  $SCRIPT_NAME logs-node                       показать последние Docker-логи remnanode
-  $SCRIPT_NAME logs-node-live                  смотреть live Docker-логи remnanode
-  $SCRIPT_NAME logs-node-error                 смотреть файловый error.log Xray на хосте
-  $SCRIPT_NAME logs-node-access                смотреть файловый access.log Xray на хосте
-  $SCRIPT_NAME logs-node-xray-out              смотреть stdout-лог Xray внутри контейнера
-  $SCRIPT_NAME logs-node-xray-err              смотреть stderr-лог Xray внутри контейнера
-  $SCRIPT_NAME issue                           выпустить или перевыпустить сертификаты по сохранённой конфигурации
-  $SCRIPT_NAME renew                           запустить один цикл продления сертификатов по сохранённой конфигурации
-  $SCRIPT_NAME open80                          открыть опубликованный Docker-порт 80/tcp в DOCKER-USER
-  $SCRIPT_NAME close80                         закрыть опубликованный Docker-порт 80/tcp в DOCKER-USER
-  $SCRIPT_NAME lockdown80                      то же самое, что close80
-  $SCRIPT_NAME status                          показать текущую конфигурацию и состояние
-  $SCRIPT_NAME node-help                       показать команды управления нодой
-Рекомендуемый запуск:
-  cd ~/installer_ssl_node && sudo bash ./install.sh de1.example.site
-
-После установки из любой папки будет доступна команда:
-  node-help
-
-Файл настроек инсталлятора:
-  ${SCRIPT_ENV_FILE}
-  В нём хранятся только постоянные значения, а при старте обычно передаётся только домен.
-
-Структура рядом со скриптом:
-  ./dist     папка с файлами сайта
-  ./site     запасной вариант, если ./dist отсутствует
-
-Что делает скрипт:
-  - при необходимости устанавливает Docker;
-  - запускает nginx в Docker;
-  - публикует 80/tcp наружу, а 8080 только на 127.0.0.1 хоста;
-  - выпускает отдельный сертификат для каждого домена;
-  - сохраняет сертификаты в ${CERTS_DIR};
-  - копирует твой fallback-сайт из ./dist в ${WWW_DIR}, если эта папка существует;
-  - настраивает systemd timer для продления сертификатов;
-  - берёт параметры ноды и панели из installer.env, а если домен не передан, спрашивает только домен;
-  - автоматически получает Secret Key ноды из панели и сохраняет его в ${REMNANODE_ENV_FILE} с правами 600;
-  - устанавливает remnanode в ${REMNANODE_DIR};
-  - включает ротацию Docker-логов и готовит файловые логи в ${REMNANODE_LOG_DIR};
-  - создаёт ${REMNANODE_LOGROTATE_FILE} для ротации файловых логов;
-  - настраивает fail2ban для SSH и повторяющихся 4xx-сканирований nginx;
-  - устанавливает глобальную команду node-help в ${GLOBAL_NODE_HELP_BIN}.
+Usage:
+  bootstrap.sh creates .env and runs install.sh --internal-auto-install.
+  sudo remnanode-stack install
+  sudo remnanode-stack help
 EOT
 }
 
 main() {
   init_colors
-
-  local cmd="${1:-install}"
-  case "$cmd" in
-    install|install-node|start-node|stop-node|restart-node|logs-node|logs-node-live|logs-node-error|logs-node-access|logs-node-xray-out|logs-node-xray-err|issue|renew|open80|close80|lockdown80|status|node-help|help|-h|--help)
-      shift || true
-      ;;
-    *)
-      cmd="install"
-      ;;
-  esac
-
-  if [[ "$cmd" == "install" && $# -gt 0 ]]; then
-    EXTRA_INSTALL_DOMAINS="$*"
-  fi
-
-  log "Запуск install.sh: команда=${cmd}, папка=${SCRIPT_DIR}"
-
-  case "$cmd" in
-    install)
-      install_all
-      ;;
-    install-node)
-      install_node_only
-      ;;
-    start-node)
-      require_root
-      load_runtime_or_die
-      check_prereqs
-      start_remnanode
-      ;;
-    stop-node)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      stop_remnanode
-      ;;
-    restart-node)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      restart_remnanode
-      ;;
-    logs-node)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_recent_node_logs
-      ;;
-    logs-node-live)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_live_node_logs
-      ;;
-    logs-node-error)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_error_log
-      ;;
-    logs-node-access)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_access_log
-      ;;
-    logs-node-xray-out)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_xray_out_log
-      ;;
-    logs-node-xray-err)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_xray_err_log
-      ;;
-    issue)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      issue_all_certs
-      ;;
-    renew)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      renew_cert
-      ;;
-    open80)
-      require_root
-      open80
-      ;;
-    close80)
-      require_root
-      close80
-      ;;
-    lockdown80)
-      require_root
-      lockdown80
-      ;;
-    status)
-      load_runtime_or_die
-      status
-      ;;
-    node-help|help|-h|--help)
-      print_node_help
-      ;;
-  esac
+  usage
 }
 
 log_file_append_from_file() {
@@ -3143,26 +2944,6 @@ setup_command_logging() {
   fi
 }
 
-show_install_logs() {
-  local arg="${1:-}"
-  local -a tail_args=()
-
-  load_saved_config
-  rebuild_runtime_paths
-  [[ -f "$INSTALL_LOG_FILE" ]] || die "Install log not found: $INSTALL_LOG_FILE"
-
-  if [[ "$arg" == "-f" || "$arg" == "--follow" ]]; then
-    tail_args=(-n 200 -f)
-  elif [[ -n "$arg" ]]; then
-    [[ "$arg" =~ ^[0-9]+$ ]] || die "Usage: install-logs [lines|-f]"
-    tail_args=(-n "$arg")
-  else
-    tail_args=(-n 200)
-  fi
-
-  tail "${tail_args[@]}" "$INSTALL_LOG_FILE"
-}
-
 install_global_node_help() {
   local wrapper_path="$GLOBAL_COMMANDS_DIR/remnanode-stack"
   local script_path="/opt/remnanode-stack-installer/install.sh"
@@ -3190,34 +2971,11 @@ case "\$cmd" in
   install|upgrade)
     run_root --internal-auto-install "\$@"
     ;;
-  status)
-    run_root --internal-status "\$@"
-    ;;
-  logs)
-    run_root --internal-logs "\$@"
-    ;;
-  logs-live)
-    run_root --internal-logs-live "\$@"
-    ;;
-  restart)
-    run_root --internal-restart "\$@"
-    ;;
-  repair)
-    run_root --internal-repair "\$@"
-    ;;
-  healthcheck|diagnose)
-    run_root --internal-healthcheck "\$@"
-    ;;
   help|-h|--help)
     cat <<'HELP'
 Usage:
-  sudo remnanode-stack status
-  sudo remnanode-stack logs
-  sudo remnanode-stack logs-live
-  sudo remnanode-stack restart
-  sudo remnanode-stack repair
-  sudo remnanode-stack healthcheck
   sudo remnanode-stack install
+  sudo remnanode-stack help
 HELP
     ;;
   *)
@@ -3696,7 +3454,7 @@ ufw_allow_tcp() {
 }
 
 setup_firewall() {
-  local ssh_port panel_ip
+  local ssh_port panel_ip public_port
 
   bool_enabled "$SETUP_FIREWALL" || {
     log "Firewall setup skipped by SETUP_FIREWALL=${SETUP_FIREWALL}"
@@ -3713,7 +3471,9 @@ setup_firewall() {
   done < <(detect_ssh_ports)
 
   ufw_allow_tcp 80 "nginx HTTP / ACME"
-  ufw_allow_tcp 443 "nginx/Xray TLS"
+  for public_port in 443 4443 8443 9443; do
+    ufw_allow_tcp "$public_port" "public TLS / inbound"
+  done
 
   if [[ "$AUTO_INSTALL_NODE" =~ ^(1|yes|true)$ && "$NODE_PORT" =~ ^[0-9]+$ ]]; then
     if [[ -n "$PANEL_IP" ]]; then
@@ -4149,13 +3909,9 @@ print_node_hints() {
   local installed_script="$BASE_DIR/install.sh"
   cat <<EOT
 
-Useful commands:
-  sudo remnanode-stack status
-  sudo remnanode-stack logs
-  sudo remnanode-stack logs-live
-  sudo remnanode-stack restart
-  sudo remnanode-stack repair
-  sudo remnanode-stack healthcheck
+Management:
+  sudo remnanode-stack install
+  sudo remnanode-stack help
 
 Full install log file:
   ${INSTALL_LOG_FILE}
@@ -4163,16 +3919,10 @@ EOT
 }
 
 print_node_help() {
-  local installed_script="$BASE_DIR/install.sh"
   cat <<EOT
 Commands:
-  sudo remnanode-stack status
-  sudo remnanode-stack logs
-  sudo remnanode-stack logs-live
-  sudo remnanode-stack restart
-  sudo remnanode-stack repair
-  sudo remnanode-stack healthcheck
   sudo remnanode-stack install
+  sudo remnanode-stack help
 
 First install:
   curl -fsSL https://raw.githubusercontent.com/chapaayy/installer_ssl_node/main/bootstrap.sh | sudo bash -s -- --help
@@ -4182,11 +3932,8 @@ EOT
 usage() {
   cat <<EOT
 Usage:
-  $SCRIPT_NAME --internal-auto-install
-  $SCRIPT_NAME --internal-status
-  $SCRIPT_NAME --internal-logs
-
-User-facing management:
+  bootstrap.sh creates .env and runs install.sh --internal-auto-install.
+  sudo remnanode-stack install
   sudo remnanode-stack help
 EOT
 }
@@ -4196,12 +3943,8 @@ main() {
 
   local cmd="${1:---internal-auto-install}"
   case "$cmd" in
-    --internal-auto-install|--internal-status|--internal-logs|--internal-logs-live|--internal-restart|--internal-repair|--internal-healthcheck|renew|open80|close80|lockdown80|node-help|help|-h|--help)
+    --internal-auto-install|renew|open80|close80|lockdown80|help|-h|--help)
       shift || true
-      ;;
-    status|logs|logs-node|logs-node-live|repair|healthcheck|diagnose|restart-node|start-node|stop-node|install-logs)
-      echo "Use the management command instead: sudo remnanode-stack ${cmd}" >&2
-      exit 2
       ;;
     *)
       echo "Unknown command: ${cmd}" >&2
@@ -4215,7 +3958,7 @@ main() {
   fi
 
   case "$cmd" in
-    node-help|help|-h|--help)
+    help|-h|--help)
       ;;
     *)
       setup_command_logging
@@ -4238,119 +3981,11 @@ main() {
     --internal-auto-install)
       install_all
       ;;
-    --internal-status)
-      require_root
-      load_runtime_or_die
-      status
-      ;;
-    --internal-logs)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_recent_node_logs
-      ;;
-    --internal-logs-live)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_live_node_logs
-      ;;
-    --internal-restart)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      restart_remnanode
-      ;;
-    --internal-repair)
-      require_root
-      repair
-      ;;
-    --internal-healthcheck)
-      require_root
-      healthcheck
-      ;;
-    install)
-      install_all
-      ;;
-    install-node)
-      install_node_only
-      ;;
-    start-node)
-      require_root
-      load_runtime_or_die
-      check_prereqs
-      start_remnanode
-      ;;
-    stop-node)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      stop_remnanode
-      ;;
-    restart-node)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      restart_remnanode
-      ;;
-    logs-node)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_recent_node_logs
-      ;;
-    logs-node-live)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_live_node_logs
-      ;;
-    logs-node-error)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_error_log
-      ;;
-    logs-node-access)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_access_log
-      ;;
-    logs-node-xray-out)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_xray_out_log
-      ;;
-    logs-node-xray-err)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      show_node_xray_err_log
-      ;;
-    issue)
-      require_root
-      check_prereqs
-      load_runtime_or_die
-      issue_all_certs
-      ;;
     renew)
       require_root
       check_prereqs
       load_runtime_or_die
       renew_cert
-      ;;
-    diagnose)
-      require_root
-      diagnose
-      ;;
-    repair)
-      repair
-      ;;
-    healthcheck)
-      require_root
-      healthcheck
       ;;
     open80)
       require_root
@@ -4364,16 +3999,7 @@ main() {
       require_root
       lockdown80
       ;;
-    status)
-      require_root
-      load_runtime_or_die
-      status
-      ;;
-    install-logs)
-      require_root
-      show_install_logs "$@"
-      ;;
-    node-help|help|-h|--help)
+    help|-h|--help)
       print_node_help
       ;;
   esac
